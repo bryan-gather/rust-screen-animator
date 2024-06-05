@@ -1010,7 +1010,6 @@ dependencies = [
  "image",
  "objc-foundation",
  "objc_id",
- "winapi",
  "windows",
 ]
 

@@ -7,11 +7,7 @@ edition = "2021"
 
 [dependencies]
 clap = "4.5.4"
-core-foundation = "0.9.4"
-core-foundation-sys = "0.8.6"
-core-graphics = "0.23.2"
 gl = "0.14.0"
 glfw = "0.55.0"
 image = "0.25.1"
-objc-foundation = "0.1.1"
-objc_id = "0.1.1"
+xcap = "0.0.10"

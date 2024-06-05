@@ -35,9 +35,66 @@ use std::{mem, ptr};
 //     kCGNullWindowID, kCGWindowListOptionOnScreenOnly, CFDictionaryGetValueIfPresent,
 //     CGWindowListCopyWindowInfo, CGWindowListOption,
 // };
+extern crate winapi;
 
+use std::ffi::OsString;
+use std::os::windows::ffi::OsStringExt;
+use std::ptr::null_mut;
+use winapi::um::winuser::{EnumWindows, GetWindowTextW, IsWindowVisible};
+
+use windows::core::*;
+use windows::core::{ComInterface, IInspectable, Result, HSTRING};
+use windows::Foundation::TypedEventHandler;
+use windows::Graphics::Capture::*;
+use windows::Graphics::Capture::{Direct3D11CaptureFramePool, GraphicsCaptureItem};
+use windows::Graphics::DirectX::DirectXPixelFormat;
+use windows::Graphics::Imaging::{BitmapAlphaMode, BitmapEncoder, BitmapPixelFormat};
+use windows::Storage::{CreationCollisionOption, FileAccessMode, StorageFolder};
+use windows::Win32::Foundation::HWND;
+use windows::Win32::Graphics::Direct3D11::{
+    ID3D11Resource, ID3D11Texture2D, D3D11_CPU_ACCESS_READ, D3D11_MAPPED_SUBRESOURCE,
+    D3D11_MAP_READ, D3D11_TEXTURE2D_DESC, D3D11_USAGE_STAGING,
+};
+use windows::Win32::Graphics::Gdi::{MonitorFromWindow, HMONITOR, MONITOR_DEFAULTTOPRIMARY};
+use windows::Win32::System::WinRT::{
+    Graphics::Capture::IGraphicsCaptureItemInterop, RoInitialize, RO_INIT_MULTITHREADED,
+};
+use windows::Win32::UI::WindowsAndMessaging::{GetDesktopWindow, GetWindowThreadProcessId};
+
+use std::io::Write;
+use std::sync::mpsc::channel;
+
+use windows::Win32::System::WinRT::{
+    Graphics::Capture::IGraphicsCaptureItemInterop, RoInitialize, RO_INIT_MULTITHREADED,
+};
+
+fn create_capture_item_for_window(window_handle: HWND) -> Result<GraphicsCaptureItem> {
+    let interop = windows::core::factory::<GraphicsCaptureItem, IGraphicsCaptureItemInterop>()?;
+    unsafe { interop.CreateForWindow(window_handle) }
+}
+
+unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: isize) -> i32 {
+    let mut buffer: [u16; 512] = [0; 512];
+    if IsWindowVisible(hwnd) != 0 {
+        let length = GetWindowTextW(hwnd, buffer.as_mut_ptr(), buffer.len() as i32);
+        if length > 0 {
+            let window_title = OsString::from_wide(&buffer[..length as usize]);
+            println!(
+                "Window handle: {:?}, id: {:?} Title: {:?}",
+                hwnd, hwnd as u64, window_title
+            );
+        }
+    }
+    1
+}
 fn main() {
+    unsafe {
+        RoInitialize(RO_INIT_MULTITHREADED).unwrap();
+    }
     // list_windows();
+    unsafe {
+        EnumWindows(Some(enum_windows_proc), 0);
+    }
     // let (x, y, d, e, image) = capture_window(35974);
     let x = 1;
     let y = 1;

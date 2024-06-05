@@ -22,4 +22,27 @@ objc-foundation = "0.1.1"
 objc_id = "0.1.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-# Add Windows-specific dependencies here if needed
+winapi = { version = "0.3", features = ["winuser"] }
+windows = { version = "0.51.1", features = [
+    "Foundation",
+    "Win32_Foundation",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Console",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_System_WinRT",
+    "Win32_System_WinRT_Direct3D11",
+    "Win32_System_WinRT_Graphics_Capture",
+    "UI",
+    "Storage",
+    "Storage_Streams",
+    "Graphics",
+    "Graphics_Capture",
+    "Graphics_DirectX",
+    "Graphics_DirectX_Direct3D11",
+    "Graphics_Imaging", 
+]}

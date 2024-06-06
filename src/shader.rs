@@ -8,6 +8,8 @@ use std::str;
 use gl;
 use gl::types::*;
 
+use cgmath::{Matrix, Matrix4};
+
 pub struct Shader {
     pub ID: u32,
 }
@@ -87,14 +89,14 @@ impl Shader {
         gl::Uniform4f(uniform_loc, x, y, z, w);
     }
     /// ------------------------------------------------------------------------
-    // pub unsafe fn setMat4(&self, name: &CStr, mat: &Matrix4<f32>) {
-    //     gl::UniformMatrix4fv(
-    //         gl::GetUniformLocation(self.ID, name.as_ptr()),
-    //         1,
-    //         gl::FALSE,
-    //         mat.as_ptr(),
-    //     );
-    // }
+    pub unsafe fn setMat4(&self, name: &CStr, mat: &Matrix4<f32>) {
+        gl::UniformMatrix4fv(
+            gl::GetUniformLocation(self.ID, name.as_ptr()),
+            1,
+            gl::FALSE,
+            mat.as_ptr(),
+        );
+    }
 
     /// utility function for checking shader compilation/linking errors.
     /// ------------------------------------------------------------------------

@@ -3,21 +3,22 @@ extern crate glfw;
 
 mod macros;
 mod shader;
+use cgmath::vec3;
 use shader::Shader;
 
 use gl::{types::*, Enable};
 
-use core_foundation::base::{CFGetTypeID, CFRelease, CFTypeID, TCFType, ToVoid};
-use core_foundation::number::{CFBooleanGetValue, CFNumberGetType};
-use core_foundation_sys::number::{
-    CFBooleanGetTypeID, CFNumberGetTypeID, CFNumberGetValue, CFNumberRef,
-};
-use core_foundation_sys::string::CFStringGetTypeID;
-use core_graphics::display::*;
-use core_graphics::image::CGImageRef;
-use core_graphics::window::{
-    kCGWindowListExcludeDesktopElements, kCGWindowListOptionIncludingWindow,
-};
+// use core_foundation::base::{CFGetTypeID, CFRelease, CFTypeID, TCFType, ToVoid};
+// use core_foundation::number::{CFBooleanGetValue, CFNumberGetType};
+// use core_foundation_sys::number::{
+//     CFBooleanGetTypeID, CFNumberGetTypeID, CFNumberGetValue, CFNumberRef,
+// };
+// use core_foundation_sys::string::CFStringGetTypeID;
+// use core_graphics::display::*;
+// use core_graphics::image::CGImageRef;
+// use core_graphics::window::{
+//     kCGWindowListExcludeDesktopElements, kCGWindowListOptionIncludingWindow,
+// };
 use glfw::{Action, Context, GlfwReceiver, Key, WindowHint, WindowMode};
 use image::ImageBuffer;
 use std::ffi::{CStr, CString};
@@ -25,26 +26,55 @@ use std::ops::Deref;
 use std::os::raw::c_void;
 use std::str;
 use std::{mem, ptr};
-extern crate core_foundation;
-extern crate core_graphics;
 
-use core_foundation::array::{CFArray, CFArrayGetCount, CFArrayGetValueAtIndex, CFArrayRef};
-use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
-use core_foundation::string::{kCFStringEncodingUTF8, CFString, CFStringGetCStringPtr};
-use core_graphics::display::{
-    kCGNullWindowID, kCGWindowListOptionOnScreenOnly, CFDictionaryGetValueIfPresent,
-    CGWindowListCopyWindowInfo, CGWindowListOption,
-};
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[arg(short, long)]
+    window: u64,
+}
+
+// MacOS
+// extern crate core_foundation;
+// extern crate core_graphics;
+
+// use core_foundation::array::{CFArray, CFArrayGetCount, CFArrayGetValueAtIndex, CFArrayRef};
+// use core_foundation::dictionary::{CFDictionary, CFDictionaryRef};
+// use core_foundation::string::{kCFStringEncodingUTF8, CFString, CFStringGetCStringPtr};
+// use core_graphics::display::{
+//     kCGNullWindowID, kCGWindowListOptionOnScreenOnly, CFDictionaryGetValueIfPresent,
+//     CGWindowListCopyWindowInfo, CGWindowListOption,
+// };
+
+use std::io::Write;
+
+mod capture;
+use capture::*;
 
 fn main() {
-    list_windows();
-    let (x, y, d, e, image) = capture_window(35974);
+    let capturer = capturer::new();
+
+    capturer.init();
+
+    let windows = capturer.list_windows().unwrap();
+    println!("Windows: {:?}", windows);
+
+    let args: Args = Args::parse();
+    let image = capturer.capture_window(args.window).unwrap();
+
+    // list_windows();
+
+    println!("Capture window successful!");
+
     let mut glfw = glfw::init_no_callbacks().unwrap();
     glfw.window_hint(glfw::WindowHint::ContextVersion(3, 3));
     glfw.window_hint(glfw::WindowHint::OpenGlProfile(
         glfw::OpenGlProfileHint::Core,
     ));
     glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true));
+    glfw.window_hint(glfw::WindowHint::Floating(true));
+    glfw.window_hint(glfw::WindowHint::FocusOnShow(true));
 
     // Set window hints for transparency and no decorations
     glfw.window_hint(WindowHint::Decorated(false));
@@ -81,16 +111,14 @@ fn main() {
         // ------------------------------------------------------------------
         // HINT: type annotation is crucial since default for float literals is f64
         let vertices: [f32; 32] = [
-            // positions       // colors        // texture coords
+            // positions     // colors       // texture coords
             1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, // top right
             1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, // bottom right
             0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, // bottom left
             0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, // top left
         ];
-        let indices = [
-            0, 1, 3, // first Triangle
-            1, 2, 3, // second Triangle
-        ];
+
+        let indices: [i32; 6] = [0, 1, 3, 1, 2, 3];
         let (mut VBO, mut VAO, mut EBO) = (0, 0, 0);
         gl::GenVertexArrays(1, &mut VAO);
         gl::GenBuffers(1, &mut VBO);
@@ -151,7 +179,7 @@ fn main() {
         gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
         gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
         // load image, create texture and generate mipmaps
-        let data = image.clone().into_raw();
+        let data = image.clone().into_rgba8().into_raw();
         gl::TexImage2D(
             gl::TEXTURE_2D,
             0,
@@ -175,44 +203,37 @@ fn main() {
         unsafe {
             //gl::Viewport(0, 0, 1000, 1000);
             gl::Clear(gl::COLOR_BUFFER_BIT); // Clear the screen
-            gl::ClearColor(1.0, 0.0, 0.0, 0.5); // Set clear color to transparent
+            gl::ClearColor(0.0, 0.0, 0.0, 0.0); // Set clear color to transparent
 
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
-            let sin_x = glfw.get_time().sin() as f32;
-            let cos_y = (2.5 * glfw.get_time().cos()) as f32;
-            // println!("sin_x: {}", sin_x);
+            let ortho_matrix = cgmath::ortho(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0);
+            // let world_matrix = cgmath::Matrix4::<f32>::from_angle_y(cgmath::Deg::<f32>(
+            //     glfw.get_time() as f32 * 0.0,
+            // ));
+            let world_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
+                (glfw.get_time() * 5.0).sin() as f32 * 100.0,
+                (glfw.get_time() * 4.0).cos() as f32 * 100.0,
+                0.0,
+            ));
+            // ));
 
-            let bottom = (400.0, 400.0);
-            let size = (1248.0, 873.0);
-
-            let scaledPosition = convert_to_gl_viewport(
-                bottom.0 as f32,
-                bottom.1 as f32,
-                width as f32,
-                height as f32,
-            );
-
-            let scaledSize = (2.0 * size.0 / width as f32, 2.0 * size.1 / height as f32);
-
-            let delta = (glfw.get_time() - start_time) as f32 * 2.0;
-            let delta_slow = (glfw.get_time() - start_time) as f32 * 2.0;
-
-            let delta_squared = delta * delta;
-
-            let offset = lerp(0.0, 0.4, delta);
-            let scale_offset = lerp(0.0, 4.0, delta);
+            // Set the viewport to the size of the window
+            gl::Viewport(0, 0, 1920, 1080);
 
             gl::BindTexture(gl::TEXTURE_2D, texture);
             ourShader.useProgram();
+            // Draw a quad at 0, 0, 100, 100
             ourShader.setVec4(
                 c_str!("Pos"),
-                scaledPosition.0 - (offset),
-                scaledPosition.1 - (offset),
-                scaledSize.0 / (1.0 + scale_offset),
-                scaledSize.1 / (1.0 + scale_offset),
+                100.0,
+                100.0,
+                image.width() as f32,
+                image.height() as f32,
             );
+            ourShader.setMat4(c_str!("projection"), &ortho_matrix);
+            ourShader.setMat4(c_str!("world"), &world_matrix);
 
             gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
             //Draw a simple square in the middle of the screen
@@ -250,13 +271,15 @@ layout (location = 1) in vec3 aColor;
 layout (location = 2) in vec2 aTexCoord;
 
 uniform vec4 Pos;
+uniform mat4 projection;
+uniform mat4 world;
 
 out vec3 ourColor;
 out vec2 TexCoord;
 
 void main()
 {
-    gl_Position = vec4(Pos.x + (aPos.x * Pos.z), Pos.y + (aPos.y * Pos.w), 0.0,  1.0);
+    gl_Position = projection * world * vec4(Pos.x + (aPos.x * Pos.z), Pos.y + (aPos.y * Pos.w), 0.0,  1.0);
 	ourColor = aColor;
 	TexCoord = vec2(aTexCoord.x, aTexCoord.y);
 }
@@ -275,173 +298,173 @@ uniform sampler2D texture2;
 
 void main()
 {
-    vec2 newTexCoord = vec2(TexCoord.x, 1.0 - TexCoord.y);
-    FragColor = texture(texture1, newTexCoord);
+    vec2 newTexCoord = vec2(TexCoord.x, TexCoord.y);
+    FragColor = texture(texture1, newTexCoord).bgra;
 }
 ";
 
 fn render(window: &glfw::Window) {}
 
-fn list_windows() -> Vec<(Option<String>, u64)> {
-    let mut win_list = vec![];
-    unsafe {
-        let window_list_info = unsafe {
-            CGWindowListCopyWindowInfo(
-                kCGWindowListOptionIncludingWindow
-                    | kCGWindowListOptionOnScreenOnly
-                    | kCGWindowListExcludeDesktopElements,
-                kCGNullWindowID,
-            )
-        };
-        if window_list_info.is_null() {
-            println!("No windows!")
-        } else {
-            let count = unsafe { CFArrayGetCount(window_list_info) };
-            for i in 0..count {
-                let dic_ref =
-                    unsafe { CFArrayGetValueAtIndex(window_list_info, i) as CFDictionaryRef };
-                if dic_ref.is_null() {
-                    unsafe {
-                        CFRelease(window_list_info.cast());
-                    }
-                }
-                let window_owner = get_from_dict(dic_ref, "kCGWindowOwnerName");
-                let window_id = get_from_dict(dic_ref, "kCGWindowNumber");
+// fn list_windows() -> Vec<(Option<String>, u64)> {
+//     let mut win_list = vec![];
+//     unsafe {
+//         let window_list_info = unsafe {
+//             CGWindowListCopyWindowInfo(
+//                 kCGWindowListOptionIncludingWindow
+//                     | kCGWindowListOptionOnScreenOnly
+//                     | kCGWindowListExcludeDesktopElements,
+//                 kCGNullWindowID,
+//             )
+//         };
+//         if window_list_info.is_null() {
+//             println!("No windows!")
+//         } else {
+//             let count = unsafe { CFArrayGetCount(window_list_info) };
+//             for i in 0..count {
+//                 let dic_ref =
+//                     unsafe { CFArrayGetValueAtIndex(window_list_info, i) as CFDictionaryRef };
+//                 if dic_ref.is_null() {
+//                     unsafe {
+//                         CFRelease(window_list_info.cast());
+//                     }
+//                 }
+//                 let window_owner = get_from_dict(dic_ref, "kCGWindowOwnerName");
+//                 let window_id = get_from_dict(dic_ref, "kCGWindowNumber");
 
-                let bounds = get_from_dict(dic_ref, "kCGWindowBounds");
+//                 let bounds = get_from_dict(dic_ref, "kCGWindowBounds");
 
-                if let (DictEntryValue::String(name), DictEntryValue::Number(win_id)) =
-                    (window_owner, window_id)
-                {
-                    println!("Window Name: {}, Window ID: {}", name, win_id);
-                    win_list.push((Some(name), win_id as u64));
-                }
-            }
-        }
-    }
+//                 if let (DictEntryValue::String(name), DictEntryValue::Number(win_id)) =
+//                     (window_owner, window_id)
+//                 {
+//                     println!("Window Name: {}, Window ID: {}", name, win_id);
+//                     win_list.push((Some(name), win_id as u64));
+//                 }
+//             }
+//         }
+//     }
 
-    win_list
-}
+//     win_list
+// }
 
-#[derive(Debug)]
-enum DictEntryValue {
-    Number(i64),
-    Bool(bool),
-    String(String),
-    Unknown,
-}
-fn get_from_dict(dict: CFDictionaryRef, key: &str) -> DictEntryValue {
-    let key: CFString = key.into();
-    let mut value: *const c_void = std::ptr::null();
-    if unsafe { CFDictionaryGetValueIfPresent(dict, key.to_void(), &mut value) != 0 } {
-        let type_id: CFTypeID = unsafe { CFGetTypeID(value) };
-        if type_id == unsafe { CFNumberGetTypeID() } {
-            let value = value as CFNumberRef;
-            match unsafe { CFNumberGetType(value) } {
-                I64 => {
-                    let mut value_i64 = 0_i64;
-                    let out_value: *mut i64 = &mut value_i64;
-                    let converted = unsafe { CFNumberGetValue(value, I64, out_value.cast()) };
-                    if converted {
-                        return DictEntryValue::Number(value_i64);
-                    }
-                }
-                I32 => {
-                    let mut value_i32 = 0_i32;
-                    let out_value: *mut i32 = &mut value_i32;
-                    let converted = unsafe { CFNumberGetValue(value, I32, out_value.cast()) };
-                    if converted {
-                        return DictEntryValue::Number(value_i32 as i64);
-                    }
-                }
-                n => {
-                    eprintln!("Unsupported Number of typeId: {}", n);
-                }
-            }
-        } else if type_id == unsafe { CFBooleanGetTypeID() } {
-            return DictEntryValue::Bool(unsafe { CFBooleanGetValue(value.cast()) });
-        } else if type_id == unsafe { CFStringGetTypeID() } {
-            let c_ptr = unsafe { CFStringGetCStringPtr(value.cast(), kCFStringEncodingUTF8) };
-            return if !c_ptr.is_null() {
-                let c_result = unsafe { CStr::from_ptr(c_ptr) };
-                let result = String::from(c_result.to_str().unwrap());
-                DictEntryValue::String(result)
-            } else {
-                // in this case there is a high chance we got a `NSString` instead of `CFString`
-                // we have to use the objc runtime to fetch it
-                use objc_foundation::{INSString, NSString};
-                use objc_id::Id;
-                let nss: Id<NSString> = unsafe { Id::from_ptr(value as *mut NSString) };
-                let str = std::str::from_utf8(nss.deref().as_str().as_bytes());
+// #[derive(Debug)]
+// enum DictEntryValue {
+//     Number(i64),
+//     Bool(bool),
+//     String(String),
+//     Unknown,
+// }
+// fn get_from_dict(dict: CFDictionaryRef, key: &str) -> DictEntryValue {
+//     let key: CFString = key.into();
+//     let mut value: *const c_void = std::ptr::null();
+//     if unsafe { CFDictionaryGetValueIfPresent(dict, key.to_void(), &mut value) != 0 } {
+//         let type_id: CFTypeID = unsafe { CFGetTypeID(value) };
+//         if type_id == unsafe { CFNumberGetTypeID() } {
+//             let value = value as CFNumberRef;
+//             match unsafe { CFNumberGetType(value) } {
+//                 I64 => {
+//                     let mut value_i64 = 0_i64;
+//                     let out_value: *mut i64 = &mut value_i64;
+//                     let converted = unsafe { CFNumberGetValue(value, I64, out_value.cast()) };
+//                     if converted {
+//                         return DictEntryValue::Number(value_i64);
+//                     }
+//                 }
+//                 I32 => {
+//                     let mut value_i32 = 0_i32;
+//                     let out_value: *mut i32 = &mut value_i32;
+//                     let converted = unsafe { CFNumberGetValue(value, I32, out_value.cast()) };
+//                     if converted {
+//                         return DictEntryValue::Number(value_i32 as i64);
+//                     }
+//                 }
+//                 n => {
+//                     eprintln!("Unsupported Number of typeId: {}", n);
+//                 }
+//             }
+//         } else if type_id == unsafe { CFBooleanGetTypeID() } {
+//             return DictEntryValue::Bool(unsafe { CFBooleanGetValue(value.cast()) });
+//         } else if type_id == unsafe { CFStringGetTypeID() } {
+//             let c_ptr = unsafe { CFStringGetCStringPtr(value.cast(), kCFStringEncodingUTF8) };
+//             return if !c_ptr.is_null() {
+//                 let c_result = unsafe { CStr::from_ptr(c_ptr) };
+//                 let result = String::from(c_result.to_str().unwrap());
+//                 DictEntryValue::String(result)
+//             } else {
+//                 // in this case there is a high chance we got a `NSString` instead of `CFString`
+//                 // we have to use the objc runtime to fetch it
+//                 use objc_foundation::{INSString, NSString};
+//                 use objc_id::Id;
+//                 let nss: Id<NSString> = unsafe { Id::from_ptr(value as *mut NSString) };
+//                 let str = std::str::from_utf8(nss.deref().as_str().as_bytes());
 
-                match str {
-                    Ok(s) => DictEntryValue::String(s.to_owned()),
-                    Err(_) => DictEntryValue::Unknown,
-                }
-            };
-        } else {
-            eprintln!("Unexpected type: {}", type_id);
-        }
-    }
+//                 match str {
+//                     Ok(s) => DictEntryValue::String(s.to_owned()),
+//                     Err(_) => DictEntryValue::Unknown,
+//                 }
+//             };
+//         } else {
+//             eprintln!("Unexpected type: {}", type_id);
+//         }
+//     }
 
-    DictEntryValue::Unknown
-}
+//     DictEntryValue::Unknown
+// }
 
-fn capture_window(
-    window_id: u32,
-) -> (u32, u32, u8, Vec<u8>, ImageBuffer<image::Rgba<u8>, Vec<u8>>) {
-    let image = unsafe {
-        CGDisplay::screenshot(
-            CGRectNull,
-            kCGWindowListOptionIncludingWindow | kCGWindowListExcludeDesktopElements,
-            window_id as u32,
-            kCGWindowImageNominalResolution
-                | kCGWindowImageBoundsIgnoreFraming
-                | kCGWindowImageShouldBeOpaque,
-        )
-    }
-    .unwrap();
-    // .context(format!(
-    //     "Cannot grab screenshot from CGDisplay of window id {}",
-    //     win_id
-    // ))?;
+// fn capture_window(
+//     window_id: u32,
+// ) -> (u32, u32, u8, Vec<u8>, ImageBuffer<image::Rgba<u8>, Vec<u8>>) {
+//     let image = unsafe {
+//         CGDisplay::screenshot(
+//             CGRectNull,
+//             kCGWindowListOptionIncludingWindow | kCGWindowListExcludeDesktopElements,
+//             window_id as u32,
+//             kCGWindowImageNominalResolution
+//                 | kCGWindowImageBoundsIgnoreFraming
+//                 | kCGWindowImageShouldBeOpaque,
+//         )
+//     }
+//     .unwrap();
+//     // .context(format!(
+//     //     "Cannot grab screenshot from CGDisplay of window id {}",
+//     //     win_id
+//     // ))?;
 
-    let img_ref: &CGImageRef = &image;
-    // CAUTION: the width is not trust worthy, only the buffer dimensions are real
-    let (_wrong_width, h) = (img_ref.width() as u32, img_ref.height() as u32);
-    let raw_data: Vec<_> = img_ref.data().to_vec();
-    let byte_per_row = img_ref.bytes_per_row() as u32;
-    // the buffer must be as long as the row length x height
-    // ensure!(
-    //     byte_per_row * h == raw_data.len() as u32,
-    //     format!(
-    //         "Cannot grab screenshot from CGDisplay of window id {}",
-    //         win_id
-    //     )
-    // );
-    let byte_per_pixel = (img_ref.bits_per_pixel() / 8) as u8;
-    // the actual width based on the buffer dimensions
-    let w = byte_per_row / byte_per_pixel as u32;
+//     let img_ref: &CGImageRef = &image;
+//     // CAUTION: the width is not trust worthy, only the buffer dimensions are real
+//     let (_wrong_width, h) = (img_ref.width() as u32, img_ref.height() as u32);
+//     let raw_data: Vec<_> = img_ref.data().to_vec();
+//     let byte_per_row = img_ref.bytes_per_row() as u32;
+//     // the buffer must be as long as the row length x height
+//     // ensure!(
+//     //     byte_per_row * h == raw_data.len() as u32,
+//     //     format!(
+//     //         "Cannot grab screenshot from CGDisplay of window id {}",
+//     //         win_id
+//     //     )
+//     // );
+//     let byte_per_pixel = (img_ref.bits_per_pixel() / 8) as u8;
+//     // the actual width based on the buffer dimensions
+//     let w = byte_per_row / byte_per_pixel as u32;
 
-    println!(
-        "[WINDOW ID: {}] w: {}, h: {}, byte_per_pixel: {}, raw_data: {:?}",
-        window_id,
-        w,
-        h,
-        byte_per_pixel,
-        raw_data.len()
-    );
+//     println!(
+//         "[WINDOW ID: {}] w: {}, h: {}, byte_per_pixel: {}, raw_data: {:?}",
+//         window_id,
+//         w,
+//         h,
+//         byte_per_pixel,
+//         raw_data.len()
+//     );
 
-    let buffer =
-        match image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(w, h, raw_data.clone()) {
-            Some(buffer) => buffer,
-            None => panic!("fialed to create data"),
-        };
+//     let buffer =
+//         match image::ImageBuffer::<image::Rgba<u8>, Vec<u8>>::from_raw(w, h, raw_data.clone()) {
+//             Some(buffer) => buffer,
+//             None => panic!("fialed to create data"),
+//         };
 
-    let path = format!("screenshot.png");
-    buffer.save(path).unwrap();
-    (w, h, byte_per_pixel, raw_data, buffer)
-}
+//     let path = format!("screenshot.png");
+//     buffer.save(path).unwrap();
+//     (w, h, byte_per_pixel, raw_data, buffer)
+// }
 
 // fn save_image_to_file(image: CGImage, file_path: &str) -> Result<(), String> {
 //     let width = image.width() as u32;
@@ -525,10 +548,4 @@ fn link_program(vs: GLuint, fs: GLuint) -> GLuint {
         }
         program
     }
-}
-
-fn convert_to_gl_viewport(x: f32, y: f32, w: f32, h: f32) -> (f32, f32) {
-    let x = (2.0 * x / w) - 1.0;
-    let y = (2.0 * y / h) - 1.0;
-    (x, y)
 }

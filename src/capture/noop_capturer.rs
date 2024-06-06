@@ -33,7 +33,7 @@ impl Capturer for NoopCapturer {
         Ok(dynamic_image)
     }
 
-    fn list_windows(&self) -> Result<Vec<(u64, std::ffi::OsString)>, ()> {
+    fn list_windows(&self) -> Result<Vec<(u64, String)>, ()> {
         Ok(vec![])
     }
 }

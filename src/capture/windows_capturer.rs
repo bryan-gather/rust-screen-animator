@@ -37,9 +37,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 use crate::capturer::Capturer;
 
-pub(crate) struct WindowsCapturer {
-    // ...
-}
+pub(crate) struct WindowsCapturer;
 
 impl Capturer for WindowsCapturer {
     // ...

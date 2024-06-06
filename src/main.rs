@@ -3,6 +3,7 @@ extern crate glfw;
 
 mod macros;
 mod shader;
+use cgmath::vec3;
 use shader::Shader;
 
 use gl::{types::*, Enable};
@@ -234,6 +235,8 @@ fn main() {
         glfw::OpenGlProfileHint::Core,
     ));
     glfw.window_hint(glfw::WindowHint::OpenGlForwardCompat(true));
+    glfw.window_hint(glfw::WindowHint::Floating(true));
+    glfw.window_hint(glfw::WindowHint::FocusOnShow(true));
 
     // Set window hints for transparency and no decorations
     glfw.window_hint(WindowHint::Decorated(false));
@@ -362,12 +365,21 @@ fn main() {
         unsafe {
             //gl::Viewport(0, 0, 1000, 1000);
             gl::Clear(gl::COLOR_BUFFER_BIT); // Clear the screen
-            gl::ClearColor(1.0, 0.0, 0.0, 0.1); // Set clear color to transparent
+            gl::ClearColor(0.0, 0.0, 0.0, 0.0); // Set clear color to transparent
 
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
             let ortho_matrix = cgmath::ortho(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0);
+            // let world_matrix = cgmath::Matrix4::<f32>::from_angle_y(cgmath::Deg::<f32>(
+            //     glfw.get_time() as f32 * 0.0,
+            // ));
+            let world_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
+                (glfw.get_time() * 5.0).sin() as f32 * 100.0,
+                (glfw.get_time() * 4.0).cos() as f32 * 100.0,
+                0.0,
+            ));
+            // ));
 
             // Set the viewport to the size of the window
             gl::Viewport(0, 0, 1920, 1080);
@@ -383,6 +395,7 @@ fn main() {
                 image.height() as f32,
             );
             ourShader.setMat4(c_str!("projection"), &ortho_matrix);
+            ourShader.setMat4(c_str!("world"), &world_matrix);
 
             gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
             //Draw a simple square in the middle of the screen
@@ -421,13 +434,14 @@ layout (location = 2) in vec2 aTexCoord;
 
 uniform vec4 Pos;
 uniform mat4 projection;
+uniform mat4 world;
 
 out vec3 ourColor;
 out vec2 TexCoord;
 
 void main()
 {
-    gl_Position = projection * vec4(Pos.x + (aPos.x * Pos.z), Pos.y + (aPos.y * Pos.w), 0.0,  1.0);
+    gl_Position = projection * world * vec4(Pos.x + (aPos.x * Pos.z), Pos.y + (aPos.y * Pos.w), 0.0,  1.0);
 	ourColor = aColor;
 	TexCoord = vec2(aTexCoord.x, aTexCoord.y);
 }

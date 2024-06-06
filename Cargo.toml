@@ -10,7 +10,7 @@ cmake = "0.1"
 
 [dependencies]
 cgmath = "0.18.0"
-clap = "4.5.4"
+clap = { version = "4.5.4", features = ["derive"] }
 gl = "0.14.0"
 glfw = "0.55.0"
 image = "0.25.1"

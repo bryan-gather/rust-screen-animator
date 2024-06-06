@@ -32,6 +32,16 @@ use windows::Win32::Graphics::Dxgi::IDXGIDevice;
 use windows::Win32::System::WinRT::Direct3D11::{
     CreateDirect3D11DeviceFromDXGIDevice, IDirect3DDxgiInterfaceAccess,
 };
+
+use clap::Parser;
+
+#[derive(Parser, Debug)]
+struct Args {
+    #[arg(short, long)]
+    window: u64,
+}
+
+// MacOS
 // extern crate core_foundation;
 // extern crate core_graphics;
 
@@ -213,21 +223,17 @@ fn main() {
     unsafe {
         RoInitialize(RO_INIT_MULTITHREADED).unwrap();
     }
+
     // list_windows();
     unsafe {
         EnumWindows(Some(enum_windows_proc), LPARAM(0));
     }
 
+    let args: Args = Args::parse();
+
     println!("Trying to capture window...");
-    let image = capture_window(HWND(132750)).expect("Should capture window");
-    println!("Capture window successfull!");
-    // let (x, y, d, e, image) = capture_window(35974);
-    let x = 1;
-    let y = 1;
-    let d = 4;
-    // let mut image = image::ImageBuffer::new(1, 1);
-    // let red_pixel: image::Rgba<u8> = image::Rgba([255, 255, 255, 255]);
-    // image.put_pixel(0, 0, red_pixel);
+    let image = capture_window(HWND(args.window as isize)).expect("Should capture window");
+    println!("Capture window successful!");
 
     let mut glfw = glfw::init_no_callbacks().unwrap();
     glfw.window_hint(glfw::WindowHint::ContextVersion(3, 3));

@@ -218,7 +218,7 @@ fn main() {
     }
 
     println!("Trying to capture window...");
-    let image = capture_window(HWND(3541940)).expect("Should capture window");
+    let image = capture_window(HWND(67210)).expect("Should capture window");
     println!("Capture window successfull!");
     // let (x, y, d, e, image) = capture_window(35974);
     let x = 1;
@@ -270,16 +270,14 @@ fn main() {
         // ------------------------------------------------------------------
         // HINT: type annotation is crucial since default for float literals is f64
         let vertices: [f32; 32] = [
-            // positions       // colors        // texture coords
+            // positions     // colors       // texture coords
             1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, // top right
             1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, // bottom right
             0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, // bottom left
             0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, // top left
         ];
-        let indices = [
-            0, 1, 3, // first Triangle
-            1, 2, 3, // second Triangle
-        ];
+
+        let indices: [i32; 6] = [0, 1, 3, 1, 2, 3];
         let (mut VBO, mut VAO, mut EBO) = (0, 0, 0);
         gl::GenVertexArrays(1, &mut VAO);
         gl::GenBuffers(1, &mut VBO);
@@ -369,39 +367,22 @@ fn main() {
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
-            let sin_x = glfw.get_time().sin() as f32;
-            let cos_y = (2.5 * glfw.get_time().cos()) as f32;
-            // println!("sin_x: {}", sin_x);
+            let ortho_matrix = cgmath::ortho(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0);
 
-            let bottom = (400.0, 400.0);
-            let size = (1248.0, 873.0);
-
-            let scaledPosition = convert_to_gl_viewport(
-                bottom.0 as f32,
-                bottom.1 as f32,
-                width as f32,
-                height as f32,
-            );
-
-            let scaledSize = (2.0 * size.0 / width as f32, 2.0 * size.1 / height as f32);
-
-            let delta = (glfw.get_time() - start_time) as f32 * 2.0;
-            let delta_slow = (glfw.get_time() - start_time) as f32 * 2.0;
-
-            let delta_squared = delta * delta;
-
-            let offset = lerp(0.0, 0.4, delta);
-            let scale_offset = lerp(0.0, 4.0, delta);
+            // Set the viewport to the size of the window
+            gl::Viewport(0, 0, 1920, 1080);
 
             gl::BindTexture(gl::TEXTURE_2D, texture);
             ourShader.useProgram();
+            // Draw a quad at 0, 0, 100, 100
             ourShader.setVec4(
                 c_str!("Pos"),
-                scaledPosition.0 - (offset),
-                scaledPosition.1 - (offset),
-                scaledSize.0 / (1.0 + scale_offset),
-                scaledSize.1 / (1.0 + scale_offset),
+                100.0,
+                100.0,
+                image.width() as f32,
+                image.height() as f32,
             );
+            ourShader.setMat4(c_str!("projection"), &ortho_matrix);
 
             gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
             //Draw a simple square in the middle of the screen
@@ -439,13 +420,14 @@ layout (location = 1) in vec3 aColor;
 layout (location = 2) in vec2 aTexCoord;
 
 uniform vec4 Pos;
+uniform mat4 projection;
 
 out vec3 ourColor;
 out vec2 TexCoord;
 
 void main()
 {
-    gl_Position = vec4(Pos.x + (aPos.x * Pos.z), Pos.y + (aPos.y * Pos.w), 0.0,  1.0);
+    gl_Position = projection * vec4(Pos.x + (aPos.x * Pos.z), Pos.y + (aPos.y * Pos.w), 0.0,  1.0);
 	ourColor = aColor;
 	TexCoord = vec2(aTexCoord.x, aTexCoord.y);
 }
@@ -464,7 +446,7 @@ uniform sampler2D texture2;
 
 void main()
 {
-    vec2 newTexCoord = vec2(TexCoord.x, 1.0 - TexCoord.y);
+    vec2 newTexCoord = vec2(TexCoord.x, TexCoord.y);
     FragColor = texture(texture1, newTexCoord);
 }
 ";

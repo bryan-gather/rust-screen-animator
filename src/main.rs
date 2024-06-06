@@ -219,7 +219,7 @@ fn main() {
     }
 
     println!("Trying to capture window...");
-    let image = capture_window(HWND(67210)).expect("Should capture window");
+    let image = capture_window(HWND(132750)).expect("Should capture window");
     println!("Capture window successfull!");
     // let (x, y, d, e, image) = capture_window(35974);
     let x = 1;
@@ -461,7 +461,7 @@ uniform sampler2D texture2;
 void main()
 {
     vec2 newTexCoord = vec2(TexCoord.x, TexCoord.y);
-    FragColor = texture(texture1, newTexCoord);
+    FragColor = texture(texture1, newTexCoord).bgra;
 }
 ";
 
@@ -710,10 +710,4 @@ fn link_program(vs: GLuint, fs: GLuint) -> GLuint {
         }
         program
     }
-}
-
-fn convert_to_gl_viewport(x: f32, y: f32, w: f32, h: f32) -> (f32, f32) {
-    let x = (2.0 * x / w) - 1.0;
-    let y = (2.0 * y / h) - 1.0;
-    (x, y)
 }

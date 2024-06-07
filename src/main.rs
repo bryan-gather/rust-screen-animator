@@ -38,6 +38,9 @@ fn main() {
     println!("Windows: {:?}", windows);
 
     let args: Args = Args::parse();
+
+    let info = capturer.get_window_info(args.window).unwrap();
+
     let image = capturer.capture_window(args.window).unwrap();
 
     // list_windows();
@@ -178,8 +181,8 @@ fn main() {
             // TODO: Get this from monitor!
             let pixel_ratio = 2.0 as f32;
 
-            let monitor_width = width as f32 * 2.0;
-            let monitor_height = height as f32 * 2.0;
+            let monitor_width = width as f32 * pixel_ratio;
+            let monitor_height = height as f32 * pixel_ratio;
             println!("width: {}, height: {}", monitor_width, monitor_height);
             gl::Viewport(0, 0, monitor_width as i32, monitor_height as i32);
 
@@ -192,22 +195,30 @@ fn main() {
             let heightf = image.height() as f32 * pixel_ratio;
             let scale_matrix = cgmath::Matrix4::from_nonuniform_scale(widthf, heightf, 1.0);
             let xform_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
-                250.0 + (glfw.get_time() * 5.0).sin() as f32 * 100.0,
-                250.0 + (glfw.get_time() * 4.0).cos() as f32 * 100.0,
+                0.0 + (glfw.get_time() * 5.0).sin() as f32 * 0.0,
+                0.0 + (glfw.get_time() * 4.0).cos() as f32 * 0.0,
                 0.0,
             ));
             // let xform_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
-            //     1.0 * glfw.get_time() as f32 * 50.0,
-            //     1.0 * glfw.get_time() as f32 * 50.0,
+            //     250.0 + (glfw.get_time() * 5.0).sin() as f32 * 100.0,
+            //     250.0 + (glfw.get_time() * 4.0).cos() as f32 * 100.0,
             //     0.0,
             // ));
+
+            let MACOS_FUDGE_FACTOR_FOR_BAR = -25.0;
+            let window_pos_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
+                info.x as f32 * pixel_ratio,
+                (info.y + MACOS_FUDGE_FACTOR_FOR_BAR) as f32 * pixel_ratio,
+                0.0,
+            ));
 
             let offset_matrix = cgmath::Matrix4::from_translation(vec3(0.5, 0.5, 0.0));
 
             let rot_matrix =
-                cgmath::Matrix4::from_angle_y(Deg((glfw.get_time() as f32 * 2.0).sin() * 30.0));
+                cgmath::Matrix4::from_angle_y(Deg((glfw.get_time() as f32 * 2.0).sin() * 0.0));
 
-            let world_matrix = xform_matrix * scale_matrix * offset_matrix * rot_matrix;
+            let world_matrix =
+                xform_matrix * window_pos_matrix * scale_matrix * offset_matrix * rot_matrix;
             // ));
 
             // Set the viewport to the size of the window

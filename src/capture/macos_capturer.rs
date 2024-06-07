@@ -1,21 +1,30 @@
 use core_foundation::base::{CFGetTypeID, CFRelease, CFTypeID, TCFType, ToVoid};
+use core_foundation::dictionary::CFDictionaryGetTypeID;
 use core_foundation::number::{CFBooleanGetValue, CFNumberGetType};
 use core_foundation::string::{kCFStringEncodingUTF8, CFString, CFStringGetCStringPtr};
 use core_foundation_sys::number::{
     CFBooleanGetTypeID, CFNumberGetTypeID, CFNumberGetValue, CFNumberRef,
 };
 use core_foundation_sys::string::CFStringGetTypeID;
-use core_graphics::display::*;
 use core_graphics::image::CGImageRef;
 use core_graphics::window::{
     kCGWindowListExcludeDesktopElements, kCGWindowListOptionIncludingWindow,
 };
+use core_graphics::{display::*, window};
 use image::ImageBuffer;
 use std::ffi::{CStr, CString};
 use std::ops::Deref;
 use std::os::raw::c_void;
 
 use crate::capturer::Capturer;
+
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    pub fn CGRectMakeWithDictionaryRepresentation(
+        dict: CFDictionaryRef,
+        rect: *mut CGRect,
+    ) -> boolean_t;
+}
 
 pub(crate) struct MacOsCapturer;
 
@@ -30,9 +39,21 @@ impl Capturer for MacOsCapturer {
 
         let refined = window_list
             .into_iter()
-            .map(|(name, id)| (id, name.unwrap_or("".to_string())))
+            .map(|(name, id, _x, _y)| (id, name.unwrap_or("".to_string())))
             .collect();
         Ok(refined)
+    }
+
+    fn get_window_info(&self, window_id: u64) -> Option<crate::capturer::WindowInfo> {
+        let window = list_windows()
+            .into_iter()
+            .find(|(name, id, _x, _y)| *id == window_id)
+            .map(|(name, id, x, y)| crate::capturer::WindowInfo {
+                name: name.unwrap_or("".to_string()),
+                x,
+                y,
+            });
+        window
     }
 
     fn capture_window(&self, window_id: u64) -> Result<image::DynamicImage, ()> {
@@ -41,7 +62,7 @@ impl Capturer for MacOsCapturer {
     }
 }
 
-fn list_windows() -> Vec<(Option<String>, u64)> {
+fn list_windows() -> Vec<(Option<String>, u64, f32, f32)> {
     let mut win_list = vec![];
     println!("Listing windows");
     unsafe {
@@ -74,14 +95,24 @@ fn list_windows() -> Vec<(Option<String>, u64)> {
                 if let (DictEntryValue::String(name), DictEntryValue::Number(win_id)) =
                     (window_owner, window_id)
                 {
-                    println!("Window Name: {}, Window ID: {}", name, win_id);
-                    win_list.push((Some(name), win_id as u64));
+                    if let DictEntryValue::Rectangle(rect) = bounds {
+                        println!(
+                            "Window Name: {}, Window ID: {} Bounds: {:?}",
+                            name, win_id, rect
+                        );
+                        win_list.push((
+                            Some(name),
+                            win_id as u64,
+                            rect.origin.x as f32,
+                            rect.origin.y as f32,
+                        ));
+                    }
                 }
             }
         }
     }
 
-    vec![]
+    win_list
 }
 
 #[derive(Debug)]
@@ -89,6 +120,7 @@ enum DictEntryValue {
     Number(i64),
     Bool(bool),
     String(String),
+    Rectangle(CGRect),
     Unknown,
 }
 fn get_from_dict(dict: CFDictionaryRef, key: &str) -> DictEntryValue {
@@ -119,6 +151,14 @@ fn get_from_dict(dict: CFDictionaryRef, key: &str) -> DictEntryValue {
                     eprintln!("Unsupported Number of typeId: {}", n);
                 }
             }
+        } else if type_id == unsafe { CFDictionaryGetTypeID() } && key == "kCGWindowBounds" {
+            let rect: CGRect = unsafe {
+                let mut rect = std::mem::zeroed();
+                CGRectMakeWithDictionaryRepresentation(value.cast(), &mut rect);
+                rect
+            };
+
+            return DictEntryValue::Rectangle(rect);
         } else if type_id == unsafe { CFBooleanGetTypeID() } {
             return DictEntryValue::Bool(unsafe { CFBooleanGetValue(value.cast()) });
         } else if type_id == unsafe { CFStringGetTypeID() } {
@@ -183,6 +223,14 @@ fn capture_window(
     let byte_per_pixel = (img_ref.bits_per_pixel() / 8) as u8;
     // the actual width based on the buffer dimensions
     let w = byte_per_row / byte_per_pixel as u32;
+
+    // Use CoreGraphics library to get window info
+    let window_info_list = unsafe {
+        CGWindowListCopyWindowInfo(
+            kCGWindowListOptionIncludingWindow | kCGWindowListExcludeDesktopElements,
+            window_id,
+        )
+    };
 
     println!(
         "[WINDOW ID: {}] w: {}, h: {}, byte_per_pixel: {}, raw_data: {:?}",

@@ -19,9 +19,22 @@ use std::{mem, ptr};
 use clap::Parser;
 
 #[derive(Parser, Debug)]
+#[clap(disable_help_flag = true)]
 struct Args {
-    #[arg(short, long)]
-    window: u64,
+    #[arg(short('i'), long("window-id"))]
+    window_id: u64,
+
+    #[arg(short('x'), long("destination-x"))]
+    destination_x: f32,
+
+    #[arg(short('y'), long("destination-y"))]
+    destination_y: f32,
+
+    #[arg(short('w'), long("destination-width"))]
+    destination_width: f32,
+
+    #[arg(short('h'), long("destination-height"))]
+    destination_height: f32,
 }
 
 use std::io::Write;
@@ -39,9 +52,9 @@ fn main() {
 
     let args: Args = Args::parse();
 
-    let info = capturer.get_window_info(args.window).unwrap();
+    let info = capturer.get_window_info(args.window_id).unwrap();
 
-    let image = capturer.capture_window(args.window).unwrap();
+    let image = capturer.capture_window(args.window_id).unwrap();
 
     // list_windows();
 
@@ -168,7 +181,9 @@ fn main() {
 
     let start_time = glfw.get_time();
 
-    while !window.should_close() {
+    let mut is_complete = false;
+
+    while !is_complete {
         process_events(&mut window, &events);
         unsafe {
             //gl::Viewport(0, 0, 1000, 1000);
@@ -191,9 +206,22 @@ fn main() {
             // let world_matrix = cgmath::Matrix4::<f32>::from_angle_y(cgmath::Deg::<f32>(
             //     glfw.get_time() as f32 * 0.0,
             // ));
+
             let widthf = image.width() as f32 * pixel_ratio;
             let heightf = image.height() as f32 * pixel_ratio;
-            let scale_matrix = cgmath::Matrix4::from_nonuniform_scale(widthf, heightf, 1.0);
+
+            let delta_width = args.destination_width - widthf;
+            let delta_height = args.destination_height - heightf;
+
+            let time = (glfw.get_time() as f32 * 2.0).min(1.0);
+            is_complete = time > 0.99;
+
+            let scale_matrix = cgmath::Matrix4::from_nonuniform_scale(
+                widthf + (delta_width * time),
+                heightf + (delta_height * time),
+                1.0,
+            );
+
             let xform_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
                 0.0 + (glfw.get_time() * 5.0).sin() as f32 * 0.0,
                 0.0 + (glfw.get_time() * 4.0).cos() as f32 * 0.0,
@@ -204,11 +232,13 @@ fn main() {
             //     250.0 + (glfw.get_time() * 4.0).cos() as f32 * 100.0,
             //     0.0,
             // ));
+            let offset_x = args.destination_x - info.x as f32;
+            let offset_y = args.destination_y - info.y as f32;
 
             let MACOS_FUDGE_FACTOR_FOR_BAR = -25.0;
             let window_pos_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
-                info.x as f32 * pixel_ratio,
-                (info.y + MACOS_FUDGE_FACTOR_FOR_BAR) as f32 * pixel_ratio,
+                ((info.x as f32) + (offset_x * time)) * pixel_ratio,
+                ((info.y + MACOS_FUDGE_FACTOR_FOR_BAR) as f32 + (offset_y * time)) * pixel_ratio,
                 0.0,
             ));
 

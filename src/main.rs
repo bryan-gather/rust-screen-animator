@@ -3,7 +3,7 @@ extern crate glfw;
 
 mod macros;
 mod shader;
-use cgmath::vec3;
+use cgmath::{vec3, Deg};
 use shader::Shader;
 
 use gl::{types::*, Enable};
@@ -87,12 +87,12 @@ fn main() {
         // set up vertex data (and buffer(s)) and configure vertex attributes
         // ------------------------------------------------------------------
         // HINT: type annotation is crucial since default for float literals is f64
-        let vertices: [f32; 32] = [
-            // positions     // colors       // texture coords
-            1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, // top right
-            1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, // bottom right
-            0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, // bottom left
-            0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, // top left
+        let vertices: [f32; 20] = [
+            // positions     colors       // texture coords
+            0.5, 0.5, 0.0, 1.0, 1.0, // top right
+            0.5, -0.5, 0.0, 1.0, 0.0, // bottom right
+            -0.5, -0.5, 0.0, 0.0, 0.0, // bottom left
+            -0.5, 0.5, 0.0, 0.0, 1.0, // top left
         ];
 
         let indices: [i32; 6] = [0, 1, 3, 1, 2, 3];
@@ -119,30 +119,20 @@ fn main() {
             gl::STATIC_DRAW,
         );
 
-        let stride = 8 * mem::size_of::<GLfloat>() as GLsizei;
+        let stride = 5 * mem::size_of::<GLfloat>() as GLsizei;
         // position attribute
         gl::VertexAttribPointer(0, 3, gl::FLOAT, gl::FALSE, stride, ptr::null());
         gl::EnableVertexAttribArray(0);
-        // color attribute
+        // texture coord attribute
         gl::VertexAttribPointer(
             1,
-            3,
+            2,
             gl::FLOAT,
             gl::FALSE,
             stride,
             (3 * mem::size_of::<GLfloat>()) as *const c_void,
         );
         gl::EnableVertexAttribArray(1);
-        // texture coord attribute
-        gl::VertexAttribPointer(
-            2,
-            2,
-            gl::FLOAT,
-            gl::FALSE,
-            stride,
-            (6 * mem::size_of::<GLfloat>()) as *const c_void,
-        );
-        gl::EnableVertexAttribArray(2);
 
         // load and create a texture
         // -------------------------
@@ -185,33 +175,49 @@ fn main() {
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
 
-            let ortho_matrix = cgmath::ortho(0.0, 1920.0, 1080.0, 0.0, -1.0, 1.0);
+            // TODO: Get this from monitor!
+            let pixel_ratio = 2.0 as f32;
+
+            let monitor_width = width as f32 * 2.0;
+            let monitor_height = height as f32 * 2.0;
+            println!("width: {}, height: {}", monitor_width, monitor_height);
+            gl::Viewport(0, 0, monitor_width as i32, monitor_height as i32);
+
+            // TODO: Actual screen resolution!
+            let ortho_matrix = cgmath::ortho(0.0, monitor_width, monitor_height, 0.0, -1.0, 1.0);
             // let world_matrix = cgmath::Matrix4::<f32>::from_angle_y(cgmath::Deg::<f32>(
             //     glfw.get_time() as f32 * 0.0,
             // ));
-            let world_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
-                (glfw.get_time() * 5.0).sin() as f32 * 100.0,
-                (glfw.get_time() * 4.0).cos() as f32 * 100.0,
+            let widthf = image.width() as f32 * pixel_ratio;
+            let heightf = image.height() as f32 * pixel_ratio;
+            let scale_matrix = cgmath::Matrix4::from_nonuniform_scale(widthf, heightf, 1.0);
+            let xform_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
+                250.0 + (glfw.get_time() * 5.0).sin() as f32 * 100.0,
+                250.0 + (glfw.get_time() * 4.0).cos() as f32 * 100.0,
                 0.0,
             ));
+            // let xform_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
+            //     1.0 * glfw.get_time() as f32 * 50.0,
+            //     1.0 * glfw.get_time() as f32 * 50.0,
+            //     0.0,
+            // ));
+
+            let offset_matrix = cgmath::Matrix4::from_translation(vec3(0.5, 0.5, 0.0));
+
+            let rot_matrix =
+                cgmath::Matrix4::from_angle_y(Deg((glfw.get_time() as f32 * 2.0).sin() * 30.0));
+
+            let world_matrix = xform_matrix * scale_matrix * offset_matrix * rot_matrix;
             // ));
 
             // Set the viewport to the size of the window
-            gl::Viewport(0, 0, 1920, 1080);
-
             gl::BindTexture(gl::TEXTURE_2D, texture);
             ourShader.useProgram();
             // Draw a quad at 0, 0, 100, 100
-            ourShader.setVec4(
-                c_str!("Pos"),
-                100.0,
-                100.0,
-                image.width() as f32,
-                image.height() as f32,
-            );
             ourShader.setMat4(c_str!("projection"), &ortho_matrix);
             ourShader.setMat4(c_str!("world"), &world_matrix);
 
+            gl::BindVertexArray(VAO);
             gl::DrawElements(gl::TRIANGLES, 6, gl::UNSIGNED_INT, ptr::null());
             //Draw a simple square in the middle of the screen
         }
@@ -244,20 +250,16 @@ fn process_events(window: &mut glfw::Window, events: &GlfwReceiver<(f64, glfw::W
 static VS_SRC: &'static str = "
 #version 330 core
 layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec3 aColor;
-layout (location = 2) in vec2 aTexCoord;
+layout (location = 1) in vec2 aTexCoord;
 
-uniform vec4 Pos;
 uniform mat4 projection;
 uniform mat4 world;
 
-out vec3 ourColor;
 out vec2 TexCoord;
 
 void main()
 {
-    gl_Position = projection * world * vec4(Pos.x + (aPos.x * Pos.z), Pos.y + (aPos.y * Pos.w), 0.0,  1.0);
-	ourColor = aColor;
+    gl_Position = projection * world * vec4(aPos.x, aPos.y, aPos.z,  1.0);
 	TexCoord = vec2(aTexCoord.x, aTexCoord.y);
 }
 ";
@@ -277,6 +279,7 @@ void main()
 {
     vec2 newTexCoord = vec2(TexCoord.x, TexCoord.y);
     FragColor = texture(texture1, newTexCoord).bgra;
+    //FragColor = vec4(0.0, TexCoord.x, TexCoord.y, 1.0);
 }
 ";
 

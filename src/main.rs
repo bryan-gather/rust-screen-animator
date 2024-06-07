@@ -9,7 +9,7 @@ use shader::Shader;
 use gl::{types::*, Enable};
 
 use glfw::{Action, Context, GlfwReceiver, Key, WindowHint, WindowMode};
-use image::ImageBuffer;
+use image::{DynamicImage, ImageBuffer, Rgba};
 use std::ffi::{CStr, CString};
 use std::ops::Deref;
 use std::os::raw::c_void;
@@ -97,7 +97,7 @@ fn main() {
     // Load OpenGL functions
     gl::load_with(|symbol| window.get_proc_address(symbol) as *const _);
 
-    let (ourShader, VBO, VAO, EBO, texture) = unsafe {
+    let (ourShader, VBO, VAO, EBO) = unsafe {
         // build and compile our shader program
         // ------------------------------------
         let ourShader = Shader::new(&VS_SRC, &FS_SRC);
@@ -152,36 +152,15 @@ fn main() {
         );
         gl::EnableVertexAttribArray(1);
 
-        // load and create a texture
-        // -------------------------
-        let mut texture = 0;
-        gl::GenTextures(1, &mut texture);
-        gl::BindTexture(gl::TEXTURE_2D, texture); // all upcoming GL_TEXTURE_2D operations now have effect on this texture object
-                                                  // set the texture wrapping parameters
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32); // set texture wrapping to gl::REPEAT (default wrapping method)
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
-        // set texture filtering parameters
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
-        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
-        // load image, create texture and generate mipmaps
-        let data = image.clone().into_rgba8().into_raw();
-        gl::TexImage2D(
-            gl::TEXTURE_2D,
-            0,
-            gl::RGBA as i32,
-            image.width() as i32,
-            image.height() as i32,
-            0,
-            gl::RGBA,
-            gl::UNSIGNED_BYTE,
-            &data[0] as *const u8 as *const c_void,
-        );
-        gl::GenerateMipmap(gl::TEXTURE_2D);
-
-        (ourShader, VBO, VAO, EBO, texture)
+        (ourShader, VBO, VAO, EBO)
     };
 
-    let start_time = glfw.get_time();
+    let mut back_image = ImageBuffer::new(1, 1);
+    back_image.put_pixel(0, 0, image::Rgba([63, 37, 32, 255]));
+    let dynamic_image = DynamicImage::ImageRgba8(back_image);
+
+    let back_texture = create_gl_texture(&dynamic_image);
+    let texture = create_gl_texture(&image);
 
     let mut is_complete = false;
 
@@ -228,6 +207,11 @@ fn main() {
         )
     ];
 
+    let mut rotate_keyframes = keyframes![
+        Keyframe::new(0.0, 0.0, EaseInOut),
+        Keyframe::new(180.0, 1.0, EaseInOut)
+    ];
+
     while !is_complete {
         process_events(&mut window, &events);
         unsafe {
@@ -249,9 +233,10 @@ fn main() {
             //     glfw.get_time() as f32 * 0.0,
             // ));
 
-            let time = (glfw.get_time() as f32 * 1.0).min(1.0);
+            let time = (glfw.get_time() as f32 / 4.0).min(1.0);
             scale_keyframes.advance_to(time as f64);
             translate_keyframes.advance_to(time as f64);
+            rotate_keyframes.advance_to(time as f64);
 
             is_complete = time > 0.99;
 
@@ -283,17 +268,23 @@ fn main() {
 
             let offset_matrix = cgmath::Matrix4::from_translation(vec3(0.5, 0.5, 0.0));
 
-            let rot_matrix =
-                cgmath::Matrix4::from_angle_y(Deg((glfw.get_time() as f32 * 2.0).sin() * 0.0));
+            let rot_deg = rotate_keyframes.now_strict().unwrap();
+            let rot_matrix = cgmath::Matrix4::from_angle_y(Deg(rot_deg as f32));
 
             let world_matrix =
                 xform_matrix * window_pos_matrix * scale_matrix * offset_matrix * rot_matrix;
             // ));
 
             // Set the viewport to the size of the window
+            gl::ActiveTexture(gl::TEXTURE0);
             gl::BindTexture(gl::TEXTURE_2D, texture);
+
+            gl::ActiveTexture(gl::TEXTURE1);
+            gl::BindTexture(gl::TEXTURE_2D, back_texture);
             ourShader.useProgram();
             // Draw a quad at 0, 0, 100, 100
+            ourShader.setInt(c_str!("texture1"), 0);
+            ourShader.setInt(c_str!("texture2"), 1);
             ourShader.setMat4(c_str!("projection"), &ortho_matrix);
             ourShader.setMat4(c_str!("world"), &world_matrix);
 
@@ -305,6 +296,37 @@ fn main() {
         window.swap_buffers();
         glfw.poll_events();
     }
+}
+
+fn create_gl_texture(image: &image::DynamicImage) -> u32 {
+    // load and create a texture
+    // -------------------------
+    let mut texture = 0;
+    unsafe {
+        gl::GenTextures(1, &mut texture);
+        gl::BindTexture(gl::TEXTURE_2D, texture); // all upcoming GL_TEXTURE_2D operations now have effect on this texture object
+                                                  // set the texture wrapping parameters
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::REPEAT as i32); // set texture wrapping to gl::REPEAT (default wrapping method)
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::REPEAT as i32);
+        // set texture filtering parameters
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+        gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+        // load image, create texture and generate mipmaps
+        let data = image.clone().into_rgba8().into_raw();
+        gl::TexImage2D(
+            gl::TEXTURE_2D,
+            0,
+            gl::RGBA as i32,
+            image.width() as i32,
+            image.height() as i32,
+            0,
+            gl::RGBA,
+            gl::UNSIGNED_BYTE,
+            &data[0] as *const u8 as *const c_void,
+        );
+        gl::GenerateMipmap(gl::TEXTURE_2D);
+    }
+    texture
 }
 
 fn lerp(a: f32, b: f32, t: f32) -> f32 {
@@ -336,11 +358,13 @@ uniform mat4 projection;
 uniform mat4 world;
 
 out vec2 TexCoord;
+out vec3 Normal;
 
 void main()
 {
     gl_Position = projection * world * vec4(aPos.x, aPos.y, aPos.z,  1.0);
 	TexCoord = vec2(aTexCoord.x, aTexCoord.y);
+    Normal = mat3(world) * vec3(0.0, 0.0, 1.0); // Calculate the normal vector
 }
 ";
 
@@ -350,6 +374,7 @@ out vec4 FragColor;
 
 in vec3 ourColor;
 in vec2 TexCoord;
+in vec3 Normal;
 
 // texture samplers
 uniform sampler2D texture1;
@@ -357,9 +382,16 @@ uniform sampler2D texture2;
 
 void main()
 {
-    vec2 newTexCoord = vec2(TexCoord.x, TexCoord.y);
-    FragColor = texture(texture1, newTexCoord).bgra;
-    //FragColor = vec4(0.0, TexCoord.x, TexCoord.y, 1.0);
+    vec3 N = normalize(Normal);
+    vec3 viewDir = vec3(0.0, 0.0, 1.0);
+    float facing = dot(N, viewDir);
+    vec4 color;
+    if (facing > 0.0) {
+        color = texture(texture1, TexCoord).bgra; // Front face
+    } else {
+        color = texture(texture2, TexCoord).bgra; // Back face
+    }
+    FragColor = color;
 }
 ";
 

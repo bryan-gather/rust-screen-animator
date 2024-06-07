@@ -18,6 +18,8 @@ use std::{mem, ptr};
 
 use clap::Parser;
 
+use keyframe::{functions::EaseInOut, keyframes, mint::Point2, AnimationSequence, Keyframe};
+
 #[derive(Parser, Debug)]
 #[clap(disable_help_flag = true)]
 struct Args {
@@ -183,6 +185,49 @@ fn main() {
 
     let mut is_complete = false;
 
+    // TODO: Get this from monitor!
+    let pixel_ratio = 2.0 as f32;
+    let widthf = image.width() as f32;
+    let heightf = image.height() as f32;
+    let mut scale_keyframes = keyframes![
+        Keyframe::new(
+            keyframe::mint::Point2 {
+                x: widthf,
+                y: heightf
+            },
+            0.0,
+            EaseInOut
+        ),
+        Keyframe::new(
+            keyframe::mint::Point2 {
+                x: args.destination_width,
+                y: args.destination_height
+            },
+            1.0,
+            EaseInOut
+        )
+    ];
+
+    let MACOS_FUDGE_FACTOR_FOR_BAR = -25.0;
+    let mut translate_keyframes = keyframes![
+        Keyframe::new(
+            keyframe::mint::Point2 {
+                x: info.x as f32,
+                y: info.y as f32 - MACOS_FUDGE_FACTOR_FOR_BAR,
+            },
+            0.0,
+            EaseInOut
+        ),
+        Keyframe::new(
+            keyframe::mint::Point2 {
+                x: args.destination_x,
+                y: args.destination_y,
+            },
+            1.0,
+            EaseInOut
+        )
+    ];
+
     while !is_complete {
         process_events(&mut window, &events);
         unsafe {
@@ -192,9 +237,6 @@ fn main() {
 
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
-
-            // TODO: Get this from monitor!
-            let pixel_ratio = 2.0 as f32;
 
             let monitor_width = width as f32 * pixel_ratio;
             let monitor_height = height as f32 * pixel_ratio;
@@ -207,18 +249,16 @@ fn main() {
             //     glfw.get_time() as f32 * 0.0,
             // ));
 
-            let widthf = image.width() as f32 * pixel_ratio;
-            let heightf = image.height() as f32 * pixel_ratio;
+            let time = (glfw.get_time() as f32 * 1.0).min(1.0);
+            scale_keyframes.advance_to(time as f64);
+            translate_keyframes.advance_to(time as f64);
 
-            let delta_width = args.destination_width - widthf;
-            let delta_height = args.destination_height - heightf;
-
-            let time = (glfw.get_time() as f32 * 2.0).min(1.0);
             is_complete = time > 0.99;
 
+            let scale = scale_keyframes.now_strict().unwrap();
             let scale_matrix = cgmath::Matrix4::from_nonuniform_scale(
-                widthf + (delta_width * time),
-                heightf + (delta_height * time),
+                scale.x * pixel_ratio,
+                scale.y * pixel_ratio,
                 1.0,
             );
 
@@ -232,13 +272,12 @@ fn main() {
             //     250.0 + (glfw.get_time() * 4.0).cos() as f32 * 100.0,
             //     0.0,
             // ));
-            let offset_x = args.destination_x - info.x as f32;
-            let offset_y = args.destination_y - info.y as f32;
 
-            let MACOS_FUDGE_FACTOR_FOR_BAR = -25.0;
+            let translate = translate_keyframes.now_strict().unwrap();
+
             let window_pos_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
-                ((info.x as f32) + (offset_x * time)) * pixel_ratio,
-                ((info.y + MACOS_FUDGE_FACTOR_FOR_BAR) as f32 + (offset_y * time)) * pixel_ratio,
+                translate.x * pixel_ratio,
+                translate.y * pixel_ratio,
                 0.0,
             ));
 

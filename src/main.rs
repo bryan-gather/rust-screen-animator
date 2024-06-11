@@ -1,8 +1,10 @@
 extern crate gl;
 extern crate glfw;
 
+mod animations;
 mod macros;
 mod shader;
+use animations::AnimationParams;
 use cgmath::{vec3, Deg};
 use shader::Shader;
 
@@ -37,6 +39,9 @@ struct Args {
 
     #[arg(short('h'), long("destination-height"))]
     destination_height: f32,
+
+    #[arg(short('d'), long("duration"))]
+    duration: f32,
 }
 
 use std::io::Write;
@@ -49,8 +54,8 @@ fn main() {
 
     capturer.init();
 
-    let windows = capturer.list_windows().unwrap();
-    println!("Windows: {:?}", windows);
+    // let windows = capturer.list_windows().unwrap();
+    // println!("Windows: {:?}", windows);
 
     let args: Args = Args::parse();
 
@@ -166,51 +171,16 @@ fn main() {
 
     // TODO: Get this from monitor!
     let pixel_ratio = 2.0 as f32;
-    let widthf = image.width() as f32;
-    let heightf = image.height() as f32;
-    let mut scale_keyframes = keyframes![
-        Keyframe::new(
-            keyframe::mint::Point2 {
-                x: widthf,
-                y: heightf
-            },
-            0.0,
-            EaseInOut
-        ),
-        Keyframe::new(
-            keyframe::mint::Point2 {
-                x: args.destination_width,
-                y: args.destination_height
-            },
-            1.0,
-            EaseInOut
-        )
-    ];
-
-    let MACOS_FUDGE_FACTOR_FOR_BAR = -25.0;
-    let mut translate_keyframes = keyframes![
-        Keyframe::new(
-            keyframe::mint::Point2 {
-                x: info.x as f32,
-                y: info.y as f32 - MACOS_FUDGE_FACTOR_FOR_BAR,
-            },
-            0.0,
-            EaseInOut
-        ),
-        Keyframe::new(
-            keyframe::mint::Point2 {
-                x: args.destination_x,
-                y: args.destination_y,
-            },
-            1.0,
-            EaseInOut
-        )
-    ];
-
-    let mut rotate_keyframes = keyframes![
-        Keyframe::new(0.0, 0.0, EaseInOut),
-        Keyframe::new(180.0, 1.0, EaseInOut)
-    ];
+    let mut animation = animations::Animation::spin_move2(&AnimationParams {
+        start_x: info.x,
+        start_y: info.y,
+        start_width: image.width() as f32,
+        start_height: image.height() as f32,
+        destination_width: args.destination_width,
+        destination_height: args.destination_height,
+        destination_x: args.destination_x,
+        destination_y: args.destination_y,
+    });
 
     while !is_complete {
         process_events(&mut window, &events);
@@ -224,7 +194,6 @@ fn main() {
 
             let monitor_width = width as f32 * pixel_ratio;
             let monitor_height = height as f32 * pixel_ratio;
-            println!("width: {}, height: {}", monitor_width, monitor_height);
             gl::Viewport(0, 0, monitor_width as i32, monitor_height as i32);
 
             // TODO: Actual screen resolution!
@@ -233,14 +202,14 @@ fn main() {
             //     glfw.get_time() as f32 * 0.0,
             // ));
 
-            let time = (glfw.get_time() as f32 / 4.0).min(1.0);
-            scale_keyframes.advance_to(time as f64);
-            translate_keyframes.advance_to(time as f64);
-            rotate_keyframes.advance_to(time as f64);
+            let time = (glfw.get_time() as f32 / args.duration).min(1.0);
+            animation.scale_keyframes.advance_to(time as f64);
+            animation.translate_keyframes.advance_to(time as f64);
+            animation.rotate_keyframes.advance_to(time as f64);
 
             is_complete = time > 0.99;
 
-            let scale = scale_keyframes.now_strict().unwrap();
+            let scale = animation.scale_keyframes.now_strict().unwrap();
             let scale_matrix = cgmath::Matrix4::from_nonuniform_scale(
                 scale.x * pixel_ratio,
                 scale.y * pixel_ratio,
@@ -258,7 +227,7 @@ fn main() {
             //     0.0,
             // ));
 
-            let translate = translate_keyframes.now_strict().unwrap();
+            let translate = animation.translate_keyframes.now_strict().unwrap();
 
             let window_pos_matrix = cgmath::Matrix4::<f32>::from_translation(vec3(
                 translate.x * pixel_ratio,
@@ -268,7 +237,7 @@ fn main() {
 
             let offset_matrix = cgmath::Matrix4::from_translation(vec3(0.5, 0.5, 0.0));
 
-            let rot_deg = rotate_keyframes.now_strict().unwrap();
+            let rot_deg = animation.rotate_keyframes.now_strict().unwrap();
             let rot_matrix = cgmath::Matrix4::from_angle_y(Deg(rot_deg as f32));
 
             let world_matrix =

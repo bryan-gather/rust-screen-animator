@@ -96,10 +96,6 @@ fn list_windows() -> Vec<(Option<String>, u64, f32, f32)> {
                     (window_owner, window_id)
                 {
                     if let DictEntryValue::Rectangle(rect) = bounds {
-                        println!(
-                            "Window Name: {}, Window ID: {} Bounds: {:?}",
-                            name, win_id, rect
-                        );
                         win_list.push((
                             Some(name),
                             win_id as u64,
@@ -247,7 +243,5 @@ fn capture_window(
             None => panic!("fialed to create data"),
         };
 
-    let path = format!("screenshot.png");
-    buffer.save(path).unwrap();
     (w, h, byte_per_pixel, raw_data, buffer)
 }

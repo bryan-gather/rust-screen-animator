@@ -96,6 +96,7 @@ fn list_windows() -> Vec<(Option<String>, u64, f32, f32)> {
                     (window_owner, window_id)
                 {
                     if let DictEntryValue::Rectangle(rect) = bounds {
+                        println!("Window: {} - {}", name, win_id);
                         win_list.push((
                             Some(name),
                             win_id as u64,

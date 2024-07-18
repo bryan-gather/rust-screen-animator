@@ -25,23 +25,23 @@ use keyframe::{functions::EaseInOut, keyframes, mint::Point2, AnimationSequence,
 #[derive(Parser, Debug)]
 #[clap(disable_help_flag = true)]
 struct Args {
-    #[arg(short('i'), long("window-id"))]
-    window_id: u64,
+    // #[arg(short('i'), long("window-id"))]
+    // window_id: u64,
 
-    #[arg(short('x'), long("destination-x"))]
-    destination_x: f32,
+    // #[arg(short('x'), long("destination-x"))]
+    // destination_x: f32,
 
-    #[arg(short('y'), long("destination-y"))]
-    destination_y: f32,
+    // #[arg(short('y'), long("destination-y"))]
+    // destination_y: f32,
 
-    #[arg(short('w'), long("destination-width"))]
-    destination_width: f32,
+    // #[arg(short('w'), long("destination-width"))]
+    // destination_width: f32,
 
-    #[arg(short('h'), long("destination-height"))]
-    destination_height: f32,
+    // #[arg(short('h'), long("destination-height"))]
+    // destination_height: f32,
 
-    #[arg(short('d'), long("duration"))]
-    duration: f32,
+    // #[arg(short('d'), long("duration"))]
+    // duration: f32,
 }
 
 use std::io::Write;
@@ -54,14 +54,14 @@ fn main() {
 
     capturer.init();
 
-    // let windows = capturer.list_windows().unwrap();
-    // println!("Windows: {:?}", windows);
+    let windows = capturer.list_windows().unwrap();
+    println!("Windows: {:?}", windows);
+    panic!();
 
-    let args: Args = Args::parse();
+    let window_id = 1;
+    let info = capturer.get_window_info(1).unwrap();
 
-    let info = capturer.get_window_info(args.window_id).unwrap();
-
-    let image = capturer.capture_window(args.window_id).unwrap();
+    let image = capturer.capture_window(1).unwrap();
 
     // list_windows();
 
@@ -171,15 +171,15 @@ fn main() {
 
     // TODO: Get this from monitor!
     let pixel_ratio = 2.0 as f32;
-    let mut animation = animations::Animation::spin_move2(&AnimationParams {
+    let mut animation = animations::Animation::spin_move(&AnimationParams {
         start_x: info.x,
         start_y: info.y,
         start_width: image.width() as f32,
         start_height: image.height() as f32,
-        destination_width: args.destination_width,
-        destination_height: args.destination_height,
-        destination_x: args.destination_x,
-        destination_y: args.destination_y,
+        destination_width: 1.0,
+        destination_height: 1.0,
+        destination_x: 1.0,
+        destination_y: 1.0,
     });
 
     while !is_complete {
@@ -202,7 +202,7 @@ fn main() {
             //     glfw.get_time() as f32 * 0.0,
             // ));
 
-            let time = (glfw.get_time() as f32 / args.duration).min(1.0);
+            let time = (glfw.get_time() as f32 / 1.0).min(1.0);
             animation.scale_keyframes.advance_to(time as f64);
             animation.translate_keyframes.advance_to(time as f64);
             animation.rotate_keyframes.advance_to(time as f64);
